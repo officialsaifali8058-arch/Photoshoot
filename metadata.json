@@ -1,0 +1,5 @@
+{
+  "name": "AI Photoshoot Generator",
+  "description": "Upload a reference face image and a prompt to generate professional, realistic photoshoot images using AI.",
+  "requestFramePermissions": []
+}
