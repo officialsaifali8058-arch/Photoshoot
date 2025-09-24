@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import { resizeImageToAspectRatio } from "../utils/imageUtils";
 import { VariationConfig } from "../types";
@@ -14,18 +15,31 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
  */
 const parseGeminiError = (error: any, defaultMessage: string): string => {
     console.error("Gemini API Error:", error);
+    const errorMessage = error.message || '';
+
+    // Check for specific quota/rate limit error messages, which are common issues.
+    if (errorMessage.toLowerCase().includes('quota')) {
+        const retryMatch = errorMessage.match(/Please retry in ([\d.]+)s/);
+        if (retryMatch && retryMatch[1]) {
+            const delay = Math.ceil(parseFloat(retryMatch[1]));
+            return `API quota exceeded. Please wait ${delay} seconds before trying again. For more details, see ai.google.dev/gemini-api/docs/rate-limits.`;
+        }
+        return "You exceeded your current API quota. Please check your plan and billing details at ai.google.dev, or try again later.";
+    }
+
     try {
-        // The error message from the API is often a JSON string in the message property
-        const errorObj = JSON.parse(error.message);
+        // Some errors come as a JSON string within the message property.
+        const errorObj = JSON.parse(errorMessage);
         if (errorObj.error && errorObj.error.message) {
             return errorObj.error.message;
         }
     } catch (e) {
-        // If parsing fails, it might be a simple string message
-        return error.message || defaultMessage;
+        // If it's not JSON, return the raw message.
+        return errorMessage || defaultMessage;
     }
-    // Fallback if the JSON structure is unexpected
-    return error.message || defaultMessage;
+    
+    // Fallback for any other error structure.
+    return errorMessage || defaultMessage;
 }
 
 /**
@@ -125,7 +139,13 @@ export const generatePhotoshoot = async (base64Image: string, mimeType: string, 
         const imagePart = fileToGenerativePart(paddedImageBase64, 'image/png');
         
         // Add a more direct, instructional frame to the prompt to prevent conversational responses.
-        const fullPrompt = `Using the provided image as the reference for the person's face and identity, generate a new photoshoot image with a ${aspectRatio} aspect ratio based on the following instructions. The input image has been padded to the correct aspect ratio; please fill the entire frame. Do not ask for the image, it is already provided. Instructions: ${prompt}`;
+        const fullPrompt = `Task: Generate a new photoshoot image.
+Reference Image: The provided image contains the face and identity to use.
+Instructions:
+1.  **Preserve Identity**: Perfectly preserve the face and identity of the person from the reference image.
+2.  **Apply New Style**: Create a new image based on this description: "${prompt}".
+3.  **Output Format**: The output image must have a ${aspectRatio} aspect ratio and fill the entire frame.
+The final image should be a seamless, high-quality photograph, not just a cut-out of the face on a new background.`;
         const textPart = { text: fullPrompt };
 
         // Use the 'gemini-2.5-flash-image-preview' model for image editing tasks.
